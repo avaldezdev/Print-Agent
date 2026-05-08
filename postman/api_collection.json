@@ -1,0 +1,117 @@
+{
+  "info": {
+    "name": "WAMA Print Jobs API v1",
+    "description": "Endpoints REST para que la app movil Android consuma trabajos de impresion pendientes y los marque como impresos.\n\n## Setup rapido\n\n1. Activar modulo `print_jobs_api` en Configuracion empresa -> Modulos\n2. Crear un token desde Configuracion -> Tokens API\n3. En esta collection, ir a 'Variables' y poner:\n   - `base_url`: https://wama.micdepos.com  (o http://localhost:8080 para local)\n   - `token`: el token completo (wmk_xxx...)\n4. Crear una venta + Suspender/Cocina en el POS para generar un job\n5. Correr GET /print-jobs y ver el job pending\n\n## Flujo recomendado\n\n1. GET /health         -> validar token + modulo\n2. GET /print-jobs     -> obtener pendientes\n3. (imprimir en termica)\n4. POST /printed       -> confirmar\n5. (volver a 2)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://wama.micdepos.com" },
+    { "key": "token",    "value": "wmk_REEMPLAZAR_POR_TOKEN_REAL" },
+    { "key": "uuid",     "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "X-Device-Hint", "value": "postman-test" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/print-jobs/health",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "print-jobs", "health"]
+        },
+        "description": "Healthcheck. Confirma que el token es valido y el modulo esta activo."
+      }
+    },
+    {
+      "name": "List pending kitchen jobs",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/v1/print-jobs?status=pending&type=kitchen&limit=20",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "print-jobs"],
+          "query": [
+            { "key": "status", "value": "pending" },
+            { "key": "type",   "value": "kitchen" },
+            { "key": "limit",  "value": "20" }
+          ]
+        },
+        "description": "Lista los jobs pendientes filtrados por tipo. La app Android hace polling sobre este endpoint cada 3-5 segundos."
+      }
+    },
+    {
+      "name": "List pending all types",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/v1/print-jobs?status=pending",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "print-jobs"],
+          "query": [{ "key": "status", "value": "pending" }]
+        }
+      }
+    },
+    {
+      "name": "List failed",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/v1/print-jobs?status=failed",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "print-jobs"],
+          "query": [{ "key": "status", "value": "failed" }]
+        },
+        "description": "Util para retry o auditoria de jobs que fallaron."
+      }
+    },
+    {
+      "name": "Show job by uuid",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/api/v1/print-jobs/{{uuid}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "print-jobs", "{{uuid}}"]
+        },
+        "description": "Detalle individual. Setea la variable {{uuid}} con el uuid del job (sin el prefijo `job_`)."
+      }
+    },
+    {
+      "name": "Mark as printed",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "X-Device-Hint", "value": "tablet-cocina-01" }],
+        "url": {
+          "raw": "{{base_url}}/api/v1/print-jobs/{{uuid}}/printed",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "print-jobs", "{{uuid}}", "printed"]
+        },
+        "description": "Llamar inmediatamente despues de imprimir con exito. Idempotente — la segunda llamada devuelve 409."
+      }
+    },
+    {
+      "name": "Mark as failed",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/print-jobs/{{uuid}}/failed",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "print-jobs", "{{uuid}}", "failed"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Printer offline\"\n}"
+        },
+        "description": "Marca como fallido y suma 1 al attempt_count. Util cuando el device pierde conexion con la termica."
+      }
+    }
+  ]
+}

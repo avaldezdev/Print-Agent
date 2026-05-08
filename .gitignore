@@ -1,0 +1,20 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.cxx/
+.kotlin/
+
+# Android Studio caches
+*.hprof
+
+# Debug screenshots / scratch artifacts
+screenshot.*
+scremshop.*
+*.apk
+
+# Claude Code per-machine settings (allowlists, etc.)
+.claude/settings.local.json
