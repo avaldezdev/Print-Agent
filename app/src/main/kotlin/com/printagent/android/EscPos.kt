@@ -16,6 +16,10 @@ object EscPos {
     private const val DIVIDER = "--------------------------------"
     private const val FEED_BEFORE_CUT = "\n\n\n\n\n\n"
 
+    // Mínimo de líneas de contenido para que el ticket sea agarrable / pinchable en cocina.
+    // ~24 líneas × 3mm/línea ≈ 72mm; sumado al FEED_BEFORE_CUT da un ticket total de ~9cm.
+    private const val MIN_TICKET_LINES = 24
+
     fun buildTestTicket(): ByteArray {
         val out = ByteArrayOutputStream()
         out.write(INIT)
@@ -45,6 +49,7 @@ object EscPos {
     fun buildJobTicket(content: JSONObject): ByteArray {
         val out = ByteArrayOutputStream()
         out.write(INIT)
+        var contentLines = 0
 
         val header = content.optString("header").takeIf { it.isNotBlank() }
         val subheader = content.optString("subheader").takeIf { it.isNotBlank() }
@@ -58,6 +63,7 @@ object EscPos {
             out.writeAscii("$header\n")
             out.write(SIZE_NORMAL)
             out.write(BOLD_OFF)
+            contentLines += 2  // double-height ocupa el alto de 2 líneas normales
         }
 
         if (subheader != null) {
@@ -65,10 +71,12 @@ object EscPos {
             out.write(BOLD_ON)
             out.writeAscii("$subheader\n")
             out.write(BOLD_OFF)
+            contentLines += 1
         }
 
         out.write(ALIGN_LEFT)
         out.writeAscii("$DIVIDER\n")
+        contentLines += 1
 
         if (items != null) {
             for (i in 0 until items.length()) {
@@ -77,19 +85,25 @@ object EscPos {
                 val name = item.optString("name").trim()
                 val notes = item.optString("notes").trim()
                 out.writeAscii("$qty x $name\n")
+                contentLines += 1
                 if (notes.isNotBlank()) {
                     out.writeAscii("  > $notes\n")
+                    contentLines += 1
                 }
             }
         }
 
         out.writeAscii("$DIVIDER\n")
+        contentLines += 1
 
         if (footer != null) {
             out.write(ALIGN_CENTER)
             out.writeAscii("$footer\n")
+            contentLines += 1
         }
 
+        val pad = (MIN_TICKET_LINES - contentLines).coerceAtLeast(0)
+        out.writeAscii("\n".repeat(pad))
         out.writeAscii(FEED_BEFORE_CUT)
         out.write(CUT_PARTIAL)
         return out.toByteArray()

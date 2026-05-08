@@ -16,4 +16,10 @@
     <string name="status_idle">Sin probar todavía</string>
     <string name="status_loading">Conectando…</string>
     <string name="status_printing">Enviando ticket…</string>
+    <string name="action_activate">Activar agente</string>
+    <string name="action_deactivate">Desactivar agente</string>
+    <string name="notif_title">Print Agent activo</string>
+    <string name="notif_channel_name">Print Agent</string>
+    <string name="notif_starting">Iniciando…</string>
+    <string name="notif_unconfigured">Configurar token e IP antes de activar</string>
 </resources>

@@ -1,11 +1,17 @@
 package com.printagent.android
 
+import android.Manifest
 import android.content.Context
+import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -13,8 +19,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -26,6 +30,12 @@ class MainActivity : AppCompatActivity() {
             .readTimeout(10, TimeUnit.SECONDS)
             .build()
     }
+
+    private lateinit var prefs: SharedPreferences
+    private lateinit var btnToggleAgent: Button
+
+    private val requestNotifPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* result irrelevant: service starts either way */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,15 +49,17 @@ class MainActivity : AppCompatActivity() {
         val btnList = findViewById<Button>(R.id.btnList)
         val btnPrintTest = findViewById<Button>(R.id.btnPrintTest)
         val btnPrintPending = findViewById<Button>(R.id.btnPrintPending)
+        btnToggleAgent = findViewById(R.id.btnToggleAgent)
         val txtStatus = findViewById<TextView>(R.id.txtStatus)
 
-        val prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
+        prefs = getSharedPreferences("settings", Context.MODE_PRIVATE)
         editBaseUrl.setText(prefs.getString("base_url", "https://wama.micdepos.com"))
         editToken.setText(prefs.getString("token", ""))
         editPrinterIp.setText(prefs.getString("printer_ip", ""))
         editPrinterPort.setText(prefs.getString("printer_port", "9100"))
+        refreshToggleLabel()
 
-        val allButtons = listOf(btnTest, btnList, btnPrintTest, btnPrintPending)
+        val allManualButtons = listOf(btnTest, btnList, btnPrintTest, btnPrintPending)
 
         fun saveSettings() {
             prefs.edit()
@@ -61,10 +73,10 @@ class MainActivity : AppCompatActivity() {
         fun runJob(loadingMsg: Int, block: suspend () -> String) {
             saveSettings()
             txtStatus.text = getString(loadingMsg)
-            allButtons.forEach { it.isEnabled = false }
+            allManualButtons.forEach { it.isEnabled = false }
             lifecycleScope.launch {
                 val result = runCatching { block() }
-                allButtons.forEach { it.isEnabled = true }
+                allManualButtons.forEach { it.isEnabled = true }
                 txtStatus.text = result.fold(
                     onSuccess = { it },
                     onFailure = { "ERROR: ${it.javaClass.simpleName}: ${it.message}" }
@@ -100,7 +112,45 @@ class MainActivity : AppCompatActivity() {
                 txtStatus.text = "ERROR: completá IP y puerto válidos"
                 return@setOnClickListener
             }
-            runJob(R.string.status_printing) { printPending(baseUrl, token, ip, port) }
+            runJob(R.string.status_printing) {
+                withContext(Dispatchers.IO) {
+                    PrintAgent.pollAndPrintOne(http, baseUrl, token, ip, port)
+                }
+            }
+        }
+        btnToggleAgent.setOnClickListener {
+            saveSettings()
+            val nowActive = !prefs.getBoolean("agent_active", false)
+            prefs.edit().putBoolean("agent_active", nowActive).apply()
+            refreshToggleLabel()
+            if (nowActive) {
+                ensureNotifPermission()
+                PrintAgentService.start(this)
+            } else {
+                PrintAgentService.stop(this)
+            }
+        }
+
+        if (prefs.getBoolean("agent_active", false)) {
+            ensureNotifPermission()
+            PrintAgentService.start(this)
+        }
+    }
+
+    private fun refreshToggleLabel() {
+        val active = prefs.getBoolean("agent_active", false)
+        btnToggleAgent.text = getString(
+            if (active) R.string.action_deactivate else R.string.action_activate
+        )
+    }
+
+    private fun ensureNotifPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
     }
 
@@ -142,76 +192,6 @@ class MainActivity : AppCompatActivity() {
         val sent = PrinterClient.send(ip, port, bytes)
         "OK — enviados $sent bytes a $ip:$port"
     }
-
-    private suspend fun printPending(baseUrl: String, token: String, ip: String, port: Int): String = withContext(Dispatchers.IO) {
-        // 1. Pedir el primer pendiente
-        val listUrl = "$baseUrl/api/v1/print-jobs".toHttpUrl().newBuilder()
-            .addQueryParameter("status", "pending")
-            .addQueryParameter("limit", "1")
-            .build()
-        val listReq = Request.Builder()
-            .url(listUrl)
-            .header("Authorization", "Bearer $token")
-            .header("X-Device-Hint", "print-agent-android-debug")
-            .build()
-        val (job, jobUuid) = http.newCall(listReq).execute().use { resp ->
-            val body = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) {
-                return@withContext "HTTP ${resp.code} en list:\n${prettyJson(body)}"
-            }
-            val jobs = JSONObject(body).optJSONArray("jobs")
-            if (jobs == null || jobs.length() == 0) {
-                return@withContext "Sin jobs pendientes."
-            }
-            val first = jobs.getJSONObject(0)
-            val id = first.optString("id")
-            val uuid = id.removePrefix("job_")
-            first to uuid
-        }
-
-        // 2. Imprimir
-        val content = job.optJSONObject("content")
-            ?: return@withContext "Job sin content — imposible imprimir.\n${job.toString(2)}"
-        val bytes = EscPos.buildJobTicket(content)
-        val sent = runCatching { PrinterClient.send(ip, port, bytes) }
-        if (sent.isFailure) {
-            // 3a. Reportar fallo
-            val reason = sent.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "unknown"
-            markFailed(baseUrl, token, jobUuid, reason)
-            return@withContext "ERROR imprimiendo: $reason\nJob marcado como failed."
-        }
-
-        // 3b. Marcar printed
-        val mark = markPrinted(baseUrl, token, jobUuid)
-        return@withContext "OK — job ${job.optString("id")}\n  ${sent.getOrNull()} bytes a $ip:$port\n  $mark"
-    }
-
-    private fun markPrinted(baseUrl: String, token: String, uuid: String): String {
-        val req = Request.Builder()
-            .url("$baseUrl/api/v1/print-jobs/$uuid/printed")
-            .post("".toRequestBody(null))
-            .header("Authorization", "Bearer $token")
-            .header("X-Device-Hint", "print-agent-android-debug")
-            .build()
-        return http.newCall(req).execute().use { resp ->
-            "POST /printed → HTTP ${resp.code}"
-        }
-    }
-
-    private fun markFailed(baseUrl: String, token: String, uuid: String, reason: String) {
-        val body = JSONObject().put("reason", reason).toString()
-            .toRequestBody("application/json".toMediaType())
-        val req = Request.Builder()
-            .url("$baseUrl/api/v1/print-jobs/$uuid/failed")
-            .post(body)
-            .header("Authorization", "Bearer $token")
-            .header("X-Device-Hint", "print-agent-android-debug")
-            .build()
-        runCatching { http.newCall(req).execute().close() }
-    }
-
-    private fun prettyJson(body: String): String =
-        runCatching { JSONObject(body).toString(2) }.getOrDefault(body)
 
     private fun summarizePending(httpCode: Int, body: String): String {
         val root = JSONObject(body)
