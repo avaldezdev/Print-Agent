@@ -84,8 +84,20 @@ object EscPos {
                 val qty = item.optInt("qty", 1)
                 val name = item.optString("name").trim()
                 val notes = item.optString("notes").trim()
+                val modifiers = item.optJSONArray("modifiers")
                 out.writeAscii("$qty x $name\n")
                 contentLines += 1
+                if (modifiers != null) {
+                    for (j in 0 until modifiers.length()) {
+                        val mod = modifiers.getJSONObject(j)
+                        val modName = mod.optString("name").trim()
+                        if (modName.isBlank()) continue
+                        val modQty = mod.optInt("qty", 1)
+                        val prefix = if (modQty != 1) "${modQty}x " else ""
+                        out.writeAscii("  - $prefix$modName\n")
+                        contentLines += 1
+                    }
+                }
                 if (notes.isNotBlank()) {
                     out.writeAscii("  > $notes\n")
                     contentLines += 1

@@ -115,8 +115,16 @@ Lista de jobs filtrables.
         "header": "MERCADO ALDO",
         "subheader": "COMANDA #1",
         "items": [
-          { "qty": 1, "name": "Hamburguesa clasica", "notes": "sin cebolla" },
-          { "qty": 2, "name": "Papas fritas", "notes": "" }
+          {
+            "qty": 1,
+            "name": "Hamburguesa clasica",
+            "notes": "sin cebolla",
+            "modifiers": [
+              { "qty": 1, "name": "Extra queso" },
+              { "qty": 1, "name": "Pan integral" }
+            ]
+          },
+          { "qty": 2, "name": "Papas fritas", "notes": "", "modifiers": [] }
         ],
         "meta": {
           "mesa": "5",
@@ -262,7 +270,14 @@ if (job.kitchen_station?.printer) {
   "header":    "MERCADO ALDO",            // nombre del comercio
   "subheader": "COMANDA #1",               // o "ADICION #2" si es_adicion
   "items": [
-    { "qty": 1, "name": "Producto", "notes": "" }
+    {
+      "qty":   1,
+      "name":  "Producto",
+      "notes": "",                         // comentario libre del mozo (string, puede ser "")
+      "modifiers": [                        // siempre array (`[]` si el producto no tiene modificadores)
+        { "qty": 1, "name": "Extra queso" }
+      ]
+    }
   ],
   "meta": {
     "mesa":       "5",
@@ -275,6 +290,14 @@ if (job.kitchen_station?.printer) {
   "footer": "Mesa 5 - Mozo: Juan Perez - 14:30"
 }
 ```
+
+> **`modifiers`** son las opciones estructuradas que el producto trae cargadas en
+> WAMA (ej: "Sin cebolla", "Extra queso", "Termino medio"). Se emiten como array
+> por ítem y siempre vienen presentes — vacío `[]` si el producto no tiene
+> modificadores configurados. Cada entrada tiene `{ qty, name }`; no incluye
+> precio. Convención sugerida en el ticket: imprimir cada modificador en una
+> linea aparte debajo del ítem padre, con sangria + bullet (`  - Nombre`),
+> antes de `notes`.
 
 #### `receipt`
 
@@ -383,3 +406,4 @@ curl -H "Authorization: Bearer wmk_3a8b9c1d2e4f5067a8b9c0d1e2f3a4b5" \
 | Version | Fecha      | Cambios |
 |---------|------------|---------|
 | 1.0.0   | 2026-05-07 | Release inicial. Soporta tipos kitchen + adicion. |
+| 1.1.0   | 2026-05-08 | Cada ítem en `content.items[]` ahora incluye el array `modifiers` (`[{qty, name}]`, vacío si no hay). No-breaking: clientes anteriores siguen funcionando, solo lo ignoran. |
