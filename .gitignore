@@ -18,3 +18,8 @@ scremshop.*
 
 # Claude Code per-machine settings (allowlists, etc.)
 .claude/settings.local.json
+
+# Release signing secrets — NEVER commit
+keystore.properties
+*.keystore
+*.jks

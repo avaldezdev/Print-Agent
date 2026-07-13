@@ -283,6 +283,15 @@ if (job.kitchen_station?.printer) {
     "mesa":       "5",
     "mozo":       "Juan Perez",
     "hora":       "14:30",
+    "customer": {                       // o null si la venta no tiene cliente asignado
+      "id":         15,
+      "name":       "Carlos Gomez",
+      "contact_id": "C00015",
+      "tax_number": "1234567-8",
+      "mobile":     "0981123456",
+      "address":    "Av. Ejemplo 123"
+    },
+    "comanda_note": "Servir todo junto",   // nota global de la comanda ("Nota para cocina" del modal Enviar comanda)
     "comanda_id": 142,
     "numero":     1,
     "es_adicion": false
@@ -291,12 +300,21 @@ if (job.kitchen_station?.printer) {
 }
 ```
 
+> **`customer`** (objeto o `null`) trae los datos del cliente asignado a la venta:
+> `name` (nombre a imprimir), `contact_id`, `tax_number` (RUC/CI), `mobile` y
+> `address` — estos dos últimos útiles para tickets de delivery. **`comanda_note`**
+> es la nota libre que aplica a **toda la comanda** — la que se carga en el modal
+> "Enviar comanda" (campo "Nota para cocina"), distinta de `items[].notes` que es
+> por línea.
+
 > **`modifiers`** son las opciones estructuradas que el producto trae cargadas en
 > WAMA (ej: "Sin cebolla", "Extra queso", "Termino medio"). Se emiten como array
 > por ítem y siempre vienen presentes — vacío `[]` si el producto no tiene
 > modificadores configurados. Cada entrada tiene `{ qty, name }`; no incluye
-> precio. Convención sugerida en el ticket: imprimir cada modificador en una
-> linea aparte debajo del ítem padre, con sangria + bullet (`  - Nombre`),
+> precio. **Se incluyen TODOS los modificadores seleccionados del ítem, tengan o
+> no precio** — los gratuitos (precio 0, ej. "Peperoni", "Bacon") vienen igual que
+> los que suman importe. Convención sugerida en el ticket: imprimir cada modificador
+> en una linea aparte debajo del ítem padre, con sangria + bullet (`  - Nombre`),
 > antes de `notes`.
 
 #### `receipt`
@@ -407,3 +425,5 @@ curl -H "Authorization: Bearer wmk_3a8b9c1d2e4f5067a8b9c0d1e2f3a4b5" \
 |---------|------------|---------|
 | 1.0.0   | 2026-05-07 | Release inicial. Soporta tipos kitchen + adicion. |
 | 1.1.0   | 2026-05-08 | Cada ítem en `content.items[]` ahora incluye el array `modifiers` (`[{qty, name}]`, vacío si no hay). No-breaking: clientes anteriores siguen funcionando, solo lo ignoran. |
+| 1.1.1   | 2026-07-13 | Fix: `content.items[].modifiers` ahora incluye **todos** los modificadores seleccionados del ítem, sin filtrar por precio. Antes se omitían los de precio 0 (los gratuitos, ej. "Peperoni"/"Bacon" en una pizza) y solo llegaban los que sumaban importe. No-breaking. |
+| 1.2.0   | 2026-07-13 | `content.meta` ahora incluye `customer` (objeto: `id`, `name`, `contact_id`, `tax_number`, `mobile`, `address`; o `null`) y `comanda_note` (nota global de la comanda, campo "Nota para cocina" del modal Enviar comanda). El detalle (`GET /print-jobs/{uuid}`) trae el payload completo; el listado viene liviano. No-breaking. |

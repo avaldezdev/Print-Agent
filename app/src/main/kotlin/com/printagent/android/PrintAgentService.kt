@@ -61,11 +61,12 @@ class PrintAgentService : Service() {
             val token = prefs.getString("token", "") ?: ""
             val ip = prefs.getString("printer_ip", "") ?: ""
             val port = prefs.getString("printer_port", "9100")?.toIntOrNull() ?: 9100
+            val lineWidth = prefs.getInt("line_width", EscPos.WIDTH_80MM)
 
             val text = if (baseUrl.isBlank() || token.isBlank() || ip.isBlank()) {
                 getString(R.string.notif_unconfigured)
             } else {
-                runCatching { PrintAgent.pollAndPrintOne(http, baseUrl, token, ip, port) }
+                runCatching { PrintAgent.pollAndPrintOne(http, baseUrl, token, ip, port, lineWidth) }
                     .fold(
                         onSuccess = { it.lineSequence().firstOrNull() ?: it },
                         onFailure = { "ERROR: ${it.javaClass.simpleName}: ${it.message?.take(60).orEmpty()}" }

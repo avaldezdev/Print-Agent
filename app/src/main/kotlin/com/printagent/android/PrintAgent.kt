@@ -17,6 +17,7 @@ object PrintAgent {
         token: String,
         ip: String,
         port: Int,
+        lineWidth: Int = EscPos.WIDTH_80MM,
     ): String {
         val listUrl = "$baseUrl/api/v1/print-jobs".toHttpUrl().newBuilder()
             .addQueryParameter("status", "pending")
@@ -24,22 +25,29 @@ object PrintAgent {
             .build()
         val listReq = authedRequest(listUrl.toString(), token).build()
 
-        val (job, jobUuid) = http.newCall(listReq).execute().use { resp ->
+        val jobUuid = http.newCall(listReq).execute().use { resp ->
             val body = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) return "HTTP ${resp.code} en list"
             val jobs = JSONObject(body).optJSONArray("jobs")
             if (jobs == null || jobs.length() == 0) return "Esperando jobs…"
-            val first = jobs.getJSONObject(0)
-            first to first.optString("id").removePrefix("job_")
+            jobs.getJSONObject(0).optString("id").removePrefix("job_")
         }
 
-        val content = job.optJSONObject("content")
-            ?: run {
-                markFailed(http, baseUrl, token, jobUuid, "Job sin content")
-                return "Job ${job.optString("id")} sin content — failed"
-            }
+        // El listado ("recorrido") viene liviano; el DETALLE ("show" por UUID) trae el
+        // payload completo (customer, order_note, etc.). Imprimimos siempre desde el detalle.
+        val detailReq = authedRequest("$baseUrl/api/v1/print-jobs/$jobUuid", token).build()
+        val job = http.newCall(detailReq).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) return "HTTP ${resp.code} en detalle $jobUuid"
+            unwrapJob(runCatching { JSONObject(body) }.getOrNull() ?: return "Detalle sin JSON válido")
+        }
 
-        val bytes = EscPos.buildJobTicket(content)
+        if (job.optJSONObject("content") == null) {
+            markFailed(http, baseUrl, token, jobUuid, "Job sin content")
+            return "Job $jobUuid sin content — failed"
+        }
+
+        val bytes = EscPos.buildJobTicket(job, lineWidth)
         val sendResult = runCatching { PrinterClient.send(ip, port, bytes) }
         if (sendResult.isFailure) {
             val ex = sendResult.exceptionOrNull()!!
@@ -50,7 +58,15 @@ object PrintAgent {
 
         val printedCode = markPrinted(http, baseUrl, token, jobUuid)
         val sent = sendResult.getOrNull()
-        return "OK ${job.optString("id")} — $sent bytes (HTTP $printedCode)"
+        return "OK $jobUuid — $sent bytes (HTTP $printedCode)"
+    }
+
+    /** El detalle puede venir directo o envuelto en `data`/`job`. Devuelve el objeto del job. */
+    private fun unwrapJob(parsed: JSONObject): JSONObject = when {
+        parsed.has("content") -> parsed
+        parsed.optJSONObject("data") != null -> parsed.getJSONObject("data")
+        parsed.optJSONObject("job") != null -> parsed.getJSONObject("job")
+        else -> parsed
     }
 
     private fun markPrinted(http: OkHttpClient, baseUrl: String, token: String, uuid: String): Int {

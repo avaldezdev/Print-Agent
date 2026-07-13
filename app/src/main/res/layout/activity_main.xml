@@ -54,6 +54,13 @@
             android:layout_marginTop="8dp"
             android:text="@string/action_list" />
 
+        <Button
+            android:id="@+id/btnRawJson"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/action_raw_json" />
+
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
@@ -89,6 +96,33 @@
             android:hint="@string/hint_printer_port"
             android:inputType="number"
             android:singleLine="true" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/label_paper_width"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/rgPaperWidth"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/rbPaper80"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/paper_80" />
+
+            <RadioButton
+                android:id="@+id/rbPaper58"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/paper_58" />
+
+        </RadioGroup>
 
         <Button
             android:id="@+id/btnPrintTest"

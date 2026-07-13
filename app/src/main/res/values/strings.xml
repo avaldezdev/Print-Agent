@@ -7,12 +7,16 @@
     <string name="label_token">Token</string>
     <string name="action_test">Probar conexión</string>
     <string name="action_list">Listar pendientes</string>
+    <string name="action_raw_json">Ver JSON crudo</string>
     <string name="action_print_test">Imprimir prueba</string>
     <string name="action_print_pending">Imprimir pendiente real</string>
     <string name="label_printer_ip">IP impresora</string>
     <string name="label_printer_port">Puerto</string>
     <string name="hint_printer_ip">192.168.1.50</string>
     <string name="hint_printer_port">9100</string>
+    <string name="label_paper_width">Ancho de papel</string>
+    <string name="paper_58">58 mm (32 caracteres)</string>
+    <string name="paper_80">80 mm (48 caracteres)</string>
     <string name="status_idle">Sin probar todavía</string>
     <string name="status_loading">Conectando…</string>
     <string name="status_printing">Enviando ticket…</string>
