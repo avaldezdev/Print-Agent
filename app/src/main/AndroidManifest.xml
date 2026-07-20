@@ -18,6 +18,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ReprintActivity"
+            android:exported="false"
+            android:label="@string/reprint_title" />
+
         <service
             android:name=".PrintAgentService"
             android:exported="false"

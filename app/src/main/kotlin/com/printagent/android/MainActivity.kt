@@ -147,6 +147,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        findViewById<Button>(R.id.btnOpenReprint).setOnClickListener {
+            saveSettings()
+            startActivity(android.content.Intent(this, ReprintActivity::class.java))
+        }
         btnToggleAgent.setOnClickListener {
             saveSettings()
             val nowActive = !prefs.getBoolean("agent_active", false)

@@ -30,4 +30,14 @@
     <string name="alert_channel_desc">Avisa cuando la impresora no puede imprimir y hay pedidos esperando</string>
     <string name="alert_title">¡Atención! La cocina no está recibiendo pedidos</string>
     <string name="label_check_status">Verificar estado de la impresora (papel/tapa) antes de imprimir</string>
+    <string name="reprint_title">Reimprimir comandas</string>
+    <string name="action_open_reprint">Pedidos fallidos / Reimprimir</string>
+    <string name="tab_failed">Fallidos</string>
+    <string name="tab_recent">Recientes</string>
+    <string name="action_reprint">REIMPRIMIR</string>
+    <string name="action_refresh">Actualizar</string>
+    <string name="reprint_loading">Cargando…</string>
+    <string name="reprint_empty_failed">No hay pedidos fallidos. 👍</string>
+    <string name="reprint_empty_recent">No hay comandas recientes.</string>
+    <string name="reprint_no_printer">Configurá IP y puerto de la impresora primero.</string>
 </resources>

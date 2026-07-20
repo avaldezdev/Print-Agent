@@ -106,9 +106,20 @@ class PrintAgentService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ERROR)
             .setAutoCancel(true)
-            .setContentIntent(openAppIntent())
+            // Tocar la alerta lleva directo a la pantalla de recuperación, no al inicio.
+            .setContentIntent(openReprintIntent())
             .build()
         notifManager.notify(ALERT_ID, notif)
+    }
+
+    private fun openReprintIntent(): PendingIntent {
+        val intent = Intent(this, ReprintActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        return PendingIntent.getActivity(
+            this, 1, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
     }
 
     private fun openAppIntent(): PendingIntent {
