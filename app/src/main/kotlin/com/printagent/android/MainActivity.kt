@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
         val editPrinterIp = findViewById<EditText>(R.id.editPrinterIp)
         val editPrinterPort = findViewById<EditText>(R.id.editPrinterPort)
         val rgPaperWidth = findViewById<android.widget.RadioGroup>(R.id.rgPaperWidth)
+        val chkCheckStatus = findViewById<android.widget.CheckBox>(R.id.chkCheckStatus)
         val btnTest = findViewById<Button>(R.id.btnTest)
         val btnList = findViewById<Button>(R.id.btnList)
         val btnRawJson = findViewById<Button>(R.id.btnRawJson)
@@ -61,6 +62,7 @@ class MainActivity : AppCompatActivity() {
         editPrinterPort.setText(prefs.getString("printer_port", "9100"))
         val savedWidth = prefs.getInt("line_width", EscPos.WIDTH_80MM)
         rgPaperWidth.check(if (savedWidth == EscPos.WIDTH_58MM) R.id.rbPaper58 else R.id.rbPaper80)
+        chkCheckStatus.isChecked = prefs.getBoolean("check_printer_status", true)
         refreshToggleLabel()
 
         val allManualButtons = listOf(btnTest, btnList, btnRawJson, btnPrintTest, btnPrintPending)
@@ -75,6 +77,7 @@ class MainActivity : AppCompatActivity() {
                 .putString("printer_ip", editPrinterIp.text.toString().trim())
                 .putString("printer_port", editPrinterPort.text.toString().trim())
                 .putInt("line_width", currentWidth())
+                .putBoolean("check_printer_status", chkCheckStatus.isChecked)
                 .apply()
         }
 
@@ -123,7 +126,7 @@ class MainActivity : AppCompatActivity() {
                 txtStatus.text = "ERROR: completá IP y puerto válidos"
                 return@setOnClickListener
             }
-            runJob(R.string.status_printing) { printTest(ip, port, currentWidth()) }
+            runJob(R.string.status_printing) { printTest(ip, port, currentWidth(), chkCheckStatus.isChecked) }
         }
         btnPrintPending.setOnClickListener {
             val baseUrl = editBaseUrl.text.toString().trim().trimEnd('/')
@@ -131,13 +134,16 @@ class MainActivity : AppCompatActivity() {
             val ip = editPrinterIp.text.toString().trim()
             val port = editPrinterPort.text.toString().trim().toIntOrNull()
             val width = currentWidth()
+            val checkStatus = chkCheckStatus.isChecked
             if (ip.isEmpty() || port == null) {
                 txtStatus.text = "ERROR: completá IP y puerto válidos"
                 return@setOnClickListener
             }
             runJob(R.string.status_printing) {
                 withContext(Dispatchers.IO) {
-                    PrintAgent.pollAndPrintOne(http, baseUrl, token, ip, port, width)
+                    PrintAgent.pollAndPrintBatch(
+                        http, baseUrl, token, ip, port, width, PrintLedger(prefs), checkStatus
+                    ).message
                 }
             }
         }
@@ -278,11 +284,12 @@ class MainActivity : AppCompatActivity() {
         "GET /print-jobs/$uuid  [$origin]  HTTP $dCode\n$summary\n\n$pretty"
     }
 
-    private suspend fun printTest(ip: String, port: Int, width: Int): String = withContext(Dispatchers.IO) {
-        val bytes = EscPos.buildTestTicket(width)
-        val sent = PrinterClient.send(ip, port, bytes)
-        "OK — enviados $sent bytes a $ip:$port"
-    }
+    private suspend fun printTest(ip: String, port: Int, width: Int, checkStatus: Boolean): String =
+        withContext(Dispatchers.IO) {
+            val bytes = EscPos.buildTestTicket(width)
+            val sent = PrinterClient.send(ip, port, bytes, checkStatus = checkStatus)
+            "OK — enviados $sent bytes a $ip:$port"
+        }
 
     private fun summarizePending(httpCode: Int, body: String): String {
         val root = JSONObject(body)

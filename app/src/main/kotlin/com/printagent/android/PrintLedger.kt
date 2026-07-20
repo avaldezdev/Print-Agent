@@ -1,0 +1,65 @@
+package com.printagent.android
+
+import android.content.SharedPreferences
+import org.json.JSONArray
+
+/**
+ * Registro local y persistente de lo que YA salió físicamente por la impresora.
+ *
+ * Es la red de seguridad contra duplicados: el ticket se anota acá **apenas sale**,
+ * ANTES de avisarle al servidor. Si después el `POST /printed` falla (corte de red,
+ * timeout) y el job vuelve a aparecer como pendiente, nunca se reimprime porque su
+ * UUID ya está en el ledger. Sobrevive a reinicios de la app.
+ *
+ * También guarda los ACK que quedaron debiendo, para reintentarlos en ciclos
+ * posteriores hasta que el servidor confirme.
+ */
+class PrintLedger(private val prefs: SharedPreferences) {
+
+    /** ¿Este job ya se imprimió en este dispositivo? */
+    fun wasPrinted(uuid: String): Boolean = read(KEY_PRINTED).contains(uuid)
+
+    /** Llamar INMEDIATAMENTE después de que el ticket salió, antes de avisar al servidor. */
+    fun markPrintedLocally(uuid: String) {
+        val printed = read(KEY_PRINTED)
+        if (!printed.contains(uuid)) {
+            printed.add(uuid)
+            while (printed.size > MAX_LEDGER) printed.removeAt(0)
+            write(KEY_PRINTED, printed)
+        }
+        val acks = read(KEY_PENDING_ACK)
+        if (!acks.contains(uuid)) {
+            acks.add(uuid)
+            write(KEY_PENDING_ACK, acks)
+        }
+    }
+
+    /** El servidor confirmó el /printed (200 o 409): ya no hace falta reintentar. */
+    fun ackConfirmed(uuid: String) {
+        val acks = read(KEY_PENDING_ACK)
+        if (acks.remove(uuid)) write(KEY_PENDING_ACK, acks)
+    }
+
+    /** ACKs que quedaron debiendo y hay que reintentar. */
+    fun pendingAcks(): List<String> = read(KEY_PENDING_ACK)
+
+    fun printedCount(): Int = read(KEY_PRINTED).size
+
+    private fun read(key: String): MutableList<String> {
+        val raw = prefs.getString(key, "[]") ?: "[]"
+        val arr = runCatching { JSONArray(raw) }.getOrNull() ?: JSONArray()
+        return MutableList(arr.length()) { arr.optString(it) }
+    }
+
+    private fun write(key: String, values: List<String>) {
+        prefs.edit().putString(key, JSONArray(values).toString()).apply()
+    }
+
+    companion object {
+        private const val KEY_PRINTED = "ledger_printed"
+        private const val KEY_PENDING_ACK = "ledger_pending_ack"
+
+        /** Tope del historial. Alcanza de sobra: los jobs pendientes tienen TTL de 60 min. */
+        private const val MAX_LEDGER = 500
+    }
+}

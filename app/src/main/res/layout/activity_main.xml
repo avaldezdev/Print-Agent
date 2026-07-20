@@ -124,6 +124,14 @@
 
         </RadioGroup>
 
+        <CheckBox
+            android:id="@+id/chkCheckStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:checked="true"
+            android:text="@string/label_check_status" />
+
         <Button
             android:id="@+id/btnPrintTest"
             android:layout_width="match_parent"
