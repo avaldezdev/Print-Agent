@@ -192,7 +192,7 @@ class ReprintActivity : AppCompatActivity() {
             textSize = 16f
         })
         card.addView(TextView(this).apply {
-            text = listOfNotNull(job.age(), job.mesa?.let { "Mesa $it" }).joinToString(" · ")
+            text = listOfNotNull(job.age(), job.mesa?.let { "Mesa $it" }, job.station).joinToString(" · ")
             setTextColor(Color.parseColor("#666666"))
             textSize = 13f
         })
@@ -246,9 +246,6 @@ class ReprintActivity : AppCompatActivity() {
 
     private fun reprint(job: JobRow, c: Config, button: Button) {
         if (busy) return
-        if (c.ip.isBlank()) {
-            toast(getString(R.string.reprint_no_printer)); return
-        }
         busy = true
         button.isEnabled = false
         button.text = "Imprimiendo…"
@@ -275,13 +272,18 @@ class ReprintActivity : AppCompatActivity() {
 
         if (detail.optJSONObject("content") == null) return "El pedido no tiene contenido"
 
+        // Misma regla que el agente: la impresora de la estación, o la por defecto.
+        val target = PrinterRoute.resolve(detail, c.ip, c.port)?.takeIf { it.fromStation }
+            ?: PrinterRoute.resolve(job.raw, c.ip, c.port)
+            ?: return getString(R.string.reprint_no_printer)
+
         val bytes = EscPos.buildJobTicket(detail, c.width)
-        val printed = runCatching { PrinterClient.send(c.ip, c.port, bytes, checkStatus = c.checkStatus) }
+        val printed = runCatching { PrinterClient.send(target.ip, target.port, bytes, checkStatus = c.checkStatus) }
         if (printed.isFailure) {
             val ex = printed.exceptionOrNull()
             val reason = if (ex is PrinterClient.NotReadyException) ex.status.reason
             else "${ex?.javaClass?.simpleName}: ${ex?.message}"
-            return "Impresora: $reason"
+            return "${target.label}: $reason"
         }
 
         // Salió el papel: saldar el job en el servidor y anotarlo para que el agente no lo repita.
@@ -293,7 +295,8 @@ class ReprintActivity : AppCompatActivity() {
             ).execute().use { it.isSuccessful || it.code == 409 }
         }.getOrDefault(false)
 
-        return if (ack) "OK — reimpreso" else "OK — reimpreso (el servidor no confirmó)"
+        return if (ack) "OK — reimpreso en ${target.label}"
+        else "OK — reimpreso en ${target.label} (el servidor no confirmó)"
     }
 
     private fun authed(url: String, token: String): Request.Builder =
@@ -310,11 +313,12 @@ class ReprintActivity : AppCompatActivity() {
     )
 
     /** Fila de la lista, armada desde el `content` que ya trae el listado. */
-    private class JobRow(json: JSONObject) {
-        val uuid: String = json.optString("id").removePrefix("job_")
-        val orderId: String = json.optString("order_id").takeIf { it.isNotBlank() && it != "null" } ?: "—"
-        private val createdAt: String = json.optString("created_at")
-        private val content: JSONObject? = json.optJSONObject("content")
+    private class JobRow(val raw: JSONObject) {
+        val uuid: String = raw.optString("id").removePrefix("job_")
+        val station: String? = PrinterRoute.stationName(raw)
+        val orderId: String = raw.optString("order_id").takeIf { it.isNotBlank() && it != "null" } ?: "—"
+        private val createdAt: String = raw.optString("created_at")
+        private val content: JSONObject? = raw.optJSONObject("content")
         val subheader: String = content?.optString("subheader")?.takeIf { it.isNotBlank() } ?: "COMANDA"
         val mesa: String? = content?.optJSONObject("meta")?.optString("mesa")
             ?.takeIf { it.isNotBlank() && it != "null" }

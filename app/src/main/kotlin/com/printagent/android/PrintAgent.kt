@@ -20,8 +20,10 @@ import org.json.JSONObject
  * - **El ledger se escribe ANTES del ACK.** Si el `POST /printed` falla, el job vuelve
  *   a aparecer pendiente pero el ledger impide reimprimirlo.
  * - **409 en `/printed` es éxito**, no error: significa que ya estaba marcado.
- * - Si la impresora falla, se **corta el lote**: no tiene sentido seguir intentando
- *   con los demás jobs, y así conservamos el orden de llegada.
+ * - Cada job va a la impresora de su estación (ver [PrinterRoute]). Si una impresora
+ *   falla, se **saltean solo sus jobs** durante el resto del ciclo: no tiene sentido
+ *   insistir, se conserva el orden de llegada por impresora, y las demás estaciones
+ *   siguen imprimiendo.
  */
 object PrintAgent {
 
@@ -43,8 +45,8 @@ object PrintAgent {
         http: OkHttpClient,
         baseUrl: String,
         token: String,
-        ip: String,
-        port: Int,
+        defaultIp: String,
+        defaultPort: Int,
         lineWidth: Int = EscPos.WIDTH_80MM,
         ledger: PrintLedger,
         checkPrinterStatus: Boolean = true,
@@ -59,19 +61,21 @@ object PrintAgent {
         }
 
         // 1) Listar pendientes (lote, no de a uno).
-        val uuids = listPending(http, baseUrl, token)
+        val pending = listPending(http, baseUrl, token)
             ?: return Cycle("Sin conexión con el servidor")
-        if (uuids.isEmpty()) {
+        if (pending.isEmpty()) {
             val extra = if (reacked > 0) " · $reacked ACK saldado(s)" else ""
             return Cycle("Esperando pedidos…$extra")
         }
 
         var printed = 0
         var duplicates = 0
-        var index = 0
+        var waiting = 0
+        // Impresoras que fallaron en este ciclo (ip:port → "Nombre: motivo").
+        val blocked = linkedMapOf<String, String>()
 
-        for (uuid in uuids) {
-            index++
+        for (listed in pending) {
+            val uuid = listed.optString("id").removePrefix("job_")
 
             // 2) Dedup: si ya salió por esta impresora, no reimprimir — solo re-avisar.
             if (ledger.wasPrinted(uuid)) {
@@ -80,7 +84,21 @@ object PrintAgent {
                 continue
             }
 
-            // 3) Detalle completo (el listado viene liviano).
+            // 3) Destino. El listado ya trae kitchen_station: decidimos antes de pedir el
+            //    detalle, así no gastamos requests en jobs de una impresora caída.
+            val target = PrinterRoute.resolve(listed, defaultIp, defaultPort)
+            if (target == null) {
+                // Error de configuración, no de datos: queda pendiente hasta que se cargue la IP.
+                blocked["sin-impresora"] = "Pedido sin estación y sin impresora por defecto"
+                waiting++
+                continue
+            }
+            if (target.key in blocked) {
+                waiting++
+                continue
+            }
+
+            // 4) Detalle completo (el listado viene liviano).
             val job = fetchDetail(http, baseUrl, token, uuid)
             if (job == null || job.optJSONObject("content") == null) {
                 // Error de datos, no de impresora: este job no se va a poder imprimir nunca.
@@ -90,20 +108,16 @@ object PrintAgent {
 
             val bytes = EscPos.buildJobTicket(job, lineWidth)
 
-            // 4) Imprimir con reintentos.
-            val failure = printWithRetries(ip, port, bytes, checkPrinterStatus)
+            // 5) Imprimir con reintentos.
+            val failure = printWithRetries(target.ip, target.port, bytes, checkPrinterStatus)
             if (failure != null) {
                 // NO marcamos failed: el job queda pendiente y se reintenta al próximo ciclo.
-                return Cycle(
-                    message = "IMPRESORA: $failure · ${uuids.size - index + 1} pendiente(s) en cola",
-                    printed = printed,
-                    duplicatesAvoided = duplicates,
-                    pendingLeft = uuids.size - index + 1,
-                    printerProblem = failure,
-                )
+                blocked[target.key] = "${target.label}: $failure"
+                waiting++
+                continue
             }
 
-            // 5) Salió el papel: anotar en el ledger ANTES de avisar al servidor.
+            // 6) Salió el papel: anotar en el ledger ANTES de avisar al servidor.
             ledger.markPrintedLocally(uuid)
             if (ackPrinted(http, baseUrl, token, uuid)) ledger.ackConfirmed(uuid)
             printed++
@@ -113,6 +127,17 @@ object PrintAgent {
             if (printed > 0) add("$printed impreso(s)")
             if (duplicates > 0) add("$duplicates duplicado(s) evitado(s)")
             if (reacked > 0) add("$reacked ACK saldado(s)")
+        }
+        if (blocked.isNotEmpty()) {
+            val problem = blocked.values.joinToString(" · ")
+            return Cycle(
+                message = "$problem · $waiting pendiente(s) en cola" +
+                    if (parts.isEmpty()) "" else " · " + parts.joinToString(" · "),
+                printed = printed,
+                duplicatesAvoided = duplicates,
+                pendingLeft = waiting,
+                printerProblem = problem,
+            )
         }
         return Cycle(
             message = if (parts.isEmpty()) "Sin novedades" else "OK · " + parts.joinToString(" · "),
@@ -144,8 +169,8 @@ object PrintAgent {
         return lastReason
     }
 
-    /** Lista los UUID pendientes (más viejos primero). null = fallo de red. */
-    private fun listPending(http: OkHttpClient, baseUrl: String, token: String): List<String>? {
+    /** Lista los jobs pendientes (más viejos primero), versión liviana. null = fallo de red. */
+    private fun listPending(http: OkHttpClient, baseUrl: String, token: String): List<JSONObject>? {
         val url = "$baseUrl/api/v1/print-jobs".toHttpUrl().newBuilder()
             .addQueryParameter("status", "pending")
             .addQueryParameter("limit", BATCH_LIMIT.toString())
@@ -157,8 +182,7 @@ object PrintAgent {
                 (0 until jobs.length())
                     .map { jobs.getJSONObject(it) }
                     .sortedBy { it.optString("created_at") }
-                    .map { it.optString("id").removePrefix("job_") }
-                    .filter { it.isNotBlank() }
+                    .filter { it.optString("id").removePrefix("job_").isNotBlank() }
             }
         }.getOrNull()
     }

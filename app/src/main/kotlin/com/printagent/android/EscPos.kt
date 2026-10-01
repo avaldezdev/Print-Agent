@@ -2,6 +2,7 @@ package com.printagent.android
 
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.util.Locale
 
 object EscPos {
 
@@ -103,8 +104,11 @@ object EscPos {
         out.write(ALIGN_LEFT)
 
         // --- Banner de estación / tipo (video inverso, ancho completo)
+        // Con estaciones de cocina en WAMA, el banner dice a qué estación pertenece el
+        // ticket (ej. "COCINA PIZZERIA"); las adiciones conservan su banner propio.
+        val stationName = PrinterRoute.stationName(job)?.uppercase(Locale.ROOT)
         val station = when (type) {
-            "kitchen" -> "COCINA"
+            "kitchen" -> stationName ?: "COCINA"
             "bar" -> "BAR"
             "adicion" -> "ADICION"
             "receipt" -> "RECIBO"
@@ -113,7 +117,9 @@ object EscPos {
         if (station != null) {
             out.write(REVERSE_ON)
             out.write(BOLD_ON)
-            out.writeAscii(centerPad(spacedLabel(station), width) + "\n")
+            // Espaciado letra a letra solo si entra en el ancho; si no, texto normal.
+            val label = spacedLabel(station).takeIf { it.length <= width } ?: station
+            out.writeAscii(centerPad(label, width) + "\n")
             out.write(BOLD_OFF)
             out.write(REVERSE_OFF)
             lines += 1

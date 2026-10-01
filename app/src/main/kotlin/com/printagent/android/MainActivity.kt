@@ -131,14 +131,11 @@ class MainActivity : AppCompatActivity() {
         btnPrintPending.setOnClickListener {
             val baseUrl = editBaseUrl.text.toString().trim().trimEnd('/')
             val token = editToken.text.toString().trim()
+            // IP vacía = sin impresora por defecto: los jobs con estación igual salen.
             val ip = editPrinterIp.text.toString().trim()
-            val port = editPrinterPort.text.toString().trim().toIntOrNull()
+            val port = editPrinterPort.text.toString().trim().toIntOrNull() ?: 9100
             val width = currentWidth()
             val checkStatus = chkCheckStatus.isChecked
-            if (ip.isEmpty() || port == null) {
-                txtStatus.text = "ERROR: completá IP y puerto válidos"
-                return@setOnClickListener
-            }
             runJob(R.string.status_printing) {
                 withContext(Dispatchers.IO) {
                     PrintAgent.pollAndPrintBatch(
@@ -326,9 +323,10 @@ class MainActivity : AppCompatActivity() {
         sb.append("  order:     $orderId\n")
         sb.append("  target:    $printerTarget\n")
         if (printer != null) {
+            sb.append("  estación:  ${station.optString("name")}\n")
             sb.append("  printer:   $ip:$port ($profile)\n")
         } else {
-            sb.append("  printer:   <sin kitchen_station — usar fallback printer_target>\n")
+            sb.append("  printer:   <sin estación — va a la impresora por defecto>\n")
         }
         if (mesa != null || mozo != null) sb.append("  mesa/mozo: ${mesa ?: "—"} / ${mozo ?: "—"}\n")
         if (items != null) sb.append("  items:     ${items.length()}\n")

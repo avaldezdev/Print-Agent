@@ -67,7 +67,9 @@ class PrintAgentService : Service() {
             val lineWidth = prefs.getInt("line_width", EscPos.WIDTH_80MM)
             val checkStatus = prefs.getBoolean("check_printer_status", true)
 
-            if (baseUrl.isBlank() || token.isBlank() || ip.isBlank()) {
+            // La IP local es solo la impresora por defecto: si todos los productos tienen
+            // estación, cada job ya trae su impresora y puede quedar vacía.
+            if (baseUrl.isBlank() || token.isBlank()) {
                 updateNotification(getString(R.string.notif_unconfigured))
             } else {
                 val cycle = runCatching {
