@@ -49,8 +49,9 @@ if (!notas.length && !dryRun) fail('Agregá al menos una novedad: --notas "Qué 
 
 // 3) Compilar
 step('Compilando APK firmado…')
-const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
-execFileSync(gradlew, ['assembleRelease', '--console=plain', '-q'], { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' })
+// Ruta absoluta: cmd.exe puede no buscar ejecutables en el directorio actual.
+const gradlew = join(root, process.platform === 'win32' ? 'gradlew.bat' : 'gradlew')
+execFileSync(`"${gradlew}"`, ['assembleRelease', '--console=plain', '-q'], { cwd: root, stdio: 'inherit', shell: true })
 
 const outDir = join(root, 'app/build/outputs/apk/release')
 const meta = JSON.parse(readFileSync(join(outDir, 'output-metadata.json'), 'utf8'))
