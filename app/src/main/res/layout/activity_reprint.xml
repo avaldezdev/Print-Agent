@@ -44,9 +44,17 @@
             android:text="@string/reprint_loading" />
 
         <Button
+            android:id="@+id/btnDismissAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp"
+            android:text="@string/action_dismiss_all" />
+
+        <Button
             android:id="@+id/btnRefresh"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:textSize="12sp"
             android:text="@string/action_refresh" />
     </LinearLayout>
 

@@ -45,6 +45,28 @@ class PrintLedger(private val prefs: SharedPreferences) {
 
     fun printedCount(): Int = read(KEY_PRINTED).size
 
+    // --- Descartados -------------------------------------------------------
+    // El API no tiene endpoint para eliminar ni cancelar un job. Marcarlos como
+    // `printed` para sacarlos de la lista seria mentir: ese bucket es la auditoria
+    // que usamos para detectar pedidos perdidos. Por eso el descarte es LOCAL:
+    // desaparece de la pantalla del operario, el servidor conserva el registro.
+
+    fun isDismissed(uuid: String): Boolean = read(KEY_DISMISSED).contains(uuid)
+
+    fun dismiss(uuids: Collection<String>) {
+        val current = read(KEY_DISMISSED)
+        var changed = false
+        uuids.forEach { if (!current.contains(it)) { current.add(it); changed = true } }
+        if (changed) {
+            while (current.size > MAX_LEDGER) current.removeAt(0)
+            write(KEY_DISMISSED, current)
+        }
+    }
+
+    fun dismissedCount(): Int = read(KEY_DISMISSED).size
+
+    fun restoreAllDismissed() = write(KEY_DISMISSED, emptyList())
+
     private fun read(key: String): MutableList<String> {
         val raw = prefs.getString(key, "[]") ?: "[]"
         val arr = runCatching { JSONArray(raw) }.getOrNull() ?: JSONArray()
@@ -58,6 +80,7 @@ class PrintLedger(private val prefs: SharedPreferences) {
     companion object {
         private const val KEY_PRINTED = "ledger_printed"
         private const val KEY_PENDING_ACK = "ledger_pending_ack"
+        private const val KEY_DISMISSED = "ledger_dismissed"
 
         /** Tope del historial. Alcanza de sobra: los jobs pendientes tienen TTL de 60 min. */
         private const val MAX_LEDGER = 500

@@ -40,4 +40,11 @@
     <string name="reprint_empty_failed">No hay pedidos fallidos. 👍</string>
     <string name="reprint_empty_recent">No hay comandas recientes.</string>
     <string name="reprint_no_printer">Configurá IP y puerto de la impresora primero.</string>
+    <string name="action_dismiss">Descartar</string>
+    <string name="action_dismiss_all">Descartar todos</string>
+    <string name="action_restore">Restaurar descartados</string>
+    <string name="dismiss_confirm_title">¿Descartar este pedido?</string>
+    <string name="dismiss_confirm_msg">Desaparece de esta lista y no se va a imprimir. El registro se conserva en el servidor para auditoría.</string>
+    <string name="dismiss_all_confirm_title">¿Descartar todos?</string>
+    <string name="cancel">Cancelar</string>
 </resources>

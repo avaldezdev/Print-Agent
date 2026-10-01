@@ -51,9 +51,15 @@ class ReprintActivity : AppCompatActivity() {
     private lateinit var txtStatus: TextView
     private lateinit var btnTabFailed: Button
     private lateinit var btnTabRecent: Button
+    private lateinit var btnDismissAll: Button
+
+    private val ledger: PrintLedger by lazy {
+        PrintLedger(getSharedPreferences("settings", Context.MODE_PRIVATE))
+    }
 
     private var showingFailed = true
     private var busy = false
+    private var visibleFailed: List<JobRow> = emptyList()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,10 +69,13 @@ class ReprintActivity : AppCompatActivity() {
         txtStatus = findViewById(R.id.txtReprintStatus)
         btnTabFailed = findViewById(R.id.btnTabFailed)
         btnTabRecent = findViewById(R.id.btnTabRecent)
+        btnDismissAll = findViewById(R.id.btnDismissAll)
 
         btnTabFailed.setOnClickListener { switchTab(true) }
         btnTabRecent.setOnClickListener { switchTab(false) }
         findViewById<Button>(R.id.btnRefresh).setOnClickListener { load() }
+        btnDismissAll.setOnClickListener { confirmDismissAll() }
+        txtStatus.setOnClickListener { if (ledger.dismissedCount() > 0) confirmRestore() }
 
         switchTab(true)
     }
@@ -77,7 +86,33 @@ class ReprintActivity : AppCompatActivity() {
         btnTabRecent.setTypeface(null, if (failed) Typeface.NORMAL else Typeface.BOLD)
         btnTabFailed.alpha = if (failed) 1f else 0.55f
         btnTabRecent.alpha = if (failed) 0.55f else 1f
+        btnDismissAll.visibility = if (failed) View.VISIBLE else View.GONE
         load()
+    }
+
+    private fun confirmDismissAll() {
+        if (visibleFailed.isEmpty()) { toast("No hay nada para descartar"); return }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.dismiss_all_confirm_title))
+            .setMessage("Se van a descartar ${visibleFailed.size} pedido(s).\n\n${getString(R.string.dismiss_confirm_msg)}")
+            .setNegativeButton(getString(R.string.cancel), null)
+            .setPositiveButton(getString(R.string.action_dismiss_all)) { _, _ ->
+                ledger.dismiss(visibleFailed.map { it.uuid })
+                load()
+            }
+            .show()
+    }
+
+    private fun confirmRestore() {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.action_restore))
+            .setMessage("Vuelven a aparecer ${ledger.dismissedCount()} pedido(s) descartado(s).")
+            .setNegativeButton(getString(R.string.cancel), null)
+            .setPositiveButton(getString(R.string.action_restore)) { _, _ ->
+                ledger.restoreAllDismissed()
+                load()
+            }
+            .show()
     }
 
     private fun cfg(): Config {
@@ -98,12 +133,21 @@ class ReprintActivity : AppCompatActivity() {
         txtStatus.text = getString(R.string.reprint_loading)
         lifecycleScope.launch {
             val status = if (showingFailed) "failed" else "printed"
-            val jobs = withContext(Dispatchers.IO) { fetchList(c, status) }
-            if (jobs == null) {
+            val all = withContext(Dispatchers.IO) { fetchList(c, status) }
+            if (all == null) {
                 txtStatus.text = "Sin conexión con el servidor"
                 return@launch
             }
-            txtStatus.text = if (showingFailed) "Fallidos: ${jobs.size}" else "Recientes: ${jobs.size}"
+            // Los descartados solo se ocultan del lado nuestro; el servidor los conserva.
+            val jobs = if (showingFailed) all.filter { !ledger.isDismissed(it.uuid) } else all
+            if (showingFailed) visibleFailed = jobs
+
+            val dismissed = ledger.dismissedCount()
+            txtStatus.text = when {
+                !showingFailed -> "Recientes: ${jobs.size}"
+                dismissed > 0 -> "Fallidos: ${jobs.size} · $dismissed descartado(s) — tocá para restaurar"
+                else -> "Fallidos: ${jobs.size}"
+            }
             if (jobs.isEmpty()) {
                 container.addView(emptyView(
                     if (showingFailed) getString(R.string.reprint_empty_failed)
@@ -158,14 +202,39 @@ class ReprintActivity : AppCompatActivity() {
             textSize = 13f
             setPadding(0, 12, 0, 12)
         })
-        card.addView(Button(this).apply {
-            text = getString(R.string.action_reprint)
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.END }
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        // "Descartar" solo tiene sentido en Fallidos: saca el pedido de la lista sin imprimirlo.
+        if (showingFailed) {
+            actions.addView(Button(this).apply {
+                text = getString(R.string.action_dismiss)
+                setTextColor(Color.parseColor("#B00020"))
+                setOnClickListener { confirmDismissOne(job) }
+            })
+        }
+        actions.addView(Button(this).apply {
+            text = getString(R.string.action_reprint)
             setOnClickListener { reprint(job, c, this) }
         })
+        card.addView(actions)
         return card
+    }
+
+    private fun confirmDismissOne(job: JobRow) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.dismiss_confirm_title))
+            .setMessage("${job.subheader} · ${job.orderId}\n\n${getString(R.string.dismiss_confirm_msg)}")
+            .setNegativeButton(getString(R.string.cancel), null)
+            .setPositiveButton(getString(R.string.action_dismiss)) { _, _ ->
+                ledger.dismiss(listOf(job.uuid))
+                load()
+            }
+            .show()
     }
 
     private fun emptyView(msg: String) = TextView(this).apply {
